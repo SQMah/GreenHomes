@@ -10,12 +10,15 @@ import UIKit
 import CoreData
 
 let managedContext = AppDelegate().managedObjectContext
+let fetchRequest = NSFetchRequest(entityName: "Habit")
+let fetchedResultsController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: managedContext, sectionNameKeyPath: nil, cacheName: nil)
+var habits = habitsData
+
 
 class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFetchedResultsControllerDelegate {
     @IBOutlet weak var numberLabel: UILabel!
     @IBOutlet weak var searchBar: UISearchBar!
     
-    var habits = habitsData
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -33,6 +36,20 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
         // Dispose of any resources that can be recreated.
+    }
+    
+    // Fetch from CoreData
+    override func viewWillAppear(animated: Bool) {
+        super.viewWillAppear(animated)
+        let fetchRequest = NSFetchRequest(entityName: "Habit")
+        
+        do {
+            let results = try managedContext.executeFetchRequest(fetchRequest)
+            habits = results as! [NSManagedObject]
+        } catch let error as NSError {
+            print("Could not fetch \(error), \(error.userInfo)")
+        }
+        updateCounts()
     }
 
     // MARK: - Table view data source
@@ -55,22 +72,31 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             return cell
     }
     
-// Fetch from CoreData
-    override func viewWillAppear(animated: Bool) {
-        super.viewWillAppear(animated)
-        let fetchRequest = NSFetchRequest(entityName: "Habit")
-        
-        do {
-            let results = try managedContext.executeFetchRequest(fetchRequest)
-            habits = results as! [NSManagedObject]
-        } catch let error as NSError {
-            print("Could not fetch \(error), \(error.userInfo)")
+    override func tableView(tableView: UITableView, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath) {
+        switch editingStyle {
+        case .Delete:
+            // remove the deleted item from the model
+            managedContext.deleteObject(habits[indexPath.row] as NSManagedObject)
+            habits.removeAtIndex(indexPath.row)
+            do {
+                try managedContext.save()
+            } catch {
+                fatalError("Failure to save context: \(error)")
+            }
+            
+            // remove the deleted item from the `UITableView`
+            self.tableView.deleteRowsAtIndexPaths([indexPath], withRowAnimation: .Fade)
+        default:
+            return
+            
         }
         updateCounts()
     }
     
+// Update counts of habits
     func updateCounts() {
         numberLabel.text = String(habits.count)
+        
     }
     
     @IBAction func settingstoHome(segue:UIStoryboardSegue) {
