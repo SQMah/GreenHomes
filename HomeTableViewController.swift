@@ -9,15 +9,9 @@
 import UIKit
 import CoreData
 
-let appDelegate = UIApplication.sharedApplication().delegate as! AppDelegate
+let managedContext = AppDelegate().managedObjectContext
 
-let managedContext = appDelegate.managedObjectContext
-
-let entity =  NSEntityDescription.entityForName("Habit", inManagedObjectContext:managedContext)
-
-let habitObject = NSManagedObject(entity: entity!, insertIntoManagedObjectContext: managedContext)
-
-class HomeTableViewController: UITableViewController, UITextFieldDelegate {
+class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFetchedResultsControllerDelegate {
     @IBOutlet weak var numberLabel: UILabel!
     @IBOutlet weak var searchBar: UISearchBar!
     
@@ -25,6 +19,7 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+
         
         //Textfield in search bar
         let searchTextField = self.searchBar.valueForKey("searchField") as! UITextField
@@ -32,8 +27,7 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate {
         //Set text color to white
         searchTextField.attributedPlaceholder = NSAttributedString(string: NSLocalizedString("Search", comment: ""), attributes: [NSForegroundColorAttributeName: UIColor.whiteColor()])
         searchTextField.textColor = UIColor.whiteColor()
-        
-        numberLabel.text = String(habits.count)
+        updateCounts()
     }
 
     override func didReceiveMemoryWarning() {
@@ -54,11 +48,25 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate {
     override func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath)
         -> UITableViewCell {
             let cell = tableView.dequeueReusableCellWithIdentifier("habitCell", forIndexPath: indexPath)
-            
+        
             let habit = habits[indexPath.row]
             cell.textLabel!.text = habit.valueForKey("name") as? String
             cell.detailTextLabel!.text = habit.valueForKey("category") as? String
             return cell
+    }
+    
+// Fetch from CoreData
+    override func viewWillAppear(animated: Bool) {
+        super.viewWillAppear(animated)
+        let fetchRequest = NSFetchRequest(entityName: "Habit")
+        
+        do {
+            let results = try managedContext.executeFetchRequest(fetchRequest)
+            habits = results as! [NSManagedObject]
+        } catch let error as NSError {
+            print("Could not fetch \(error), \(error.userInfo)")
+        }
+        updateCounts()
     }
     
     func updateCounts() {
@@ -74,19 +82,23 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate {
     @IBAction func saveHabit(segue:UIStoryboardSegue) {
         if let addHabitTableViewController = segue.sourceViewController as? AddHabitTableViewController {
             
-            //add the new player to the players array
-            if let habit = addHabitTableViewController.habit {
-                habitObject.setValue(habit.name, forKey: "name")
-                habitObject.setValue(habit.category, forKey: "category")
-                habitObject.setValue(habit.time, forKey: "time")
-                do {
-                    try managedContext.save()
-                    habitsData.append(habitObject)
-                } catch let error as NSError  {
-                    print("Could not save \(error), \(error.userInfo)")
-                }
-                updateCounts()
+            let entity =  NSEntityDescription.entityForName("Habit", inManagedObjectContext: managedContext)
+            let habitObject = NSManagedObject(entity: entity!, insertIntoManagedObjectContext: managedContext)
+            
+            let habit = addHabitTableViewController.habit
+            habitObject.setValue(habit!.name, forKey: "name")
+            habitObject.setValue(habit!.category, forKey: "category")
+            habitObject.setValue(habit!.time, forKey: "time")
+                
+                
+            do {
+                try managedContext.save()
+                habits.append(habitObject)
+            } catch {
+                fatalError("Failure to save context: \(error)")
             }
+            tableView.reloadData()
+            updateCounts()
         }
     }
 }
