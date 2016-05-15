@@ -128,7 +128,18 @@ class AddHabitTableViewController: UITableViewController, UITextFieldDelegate {
                 
                 self.presentViewController(alert, animated: true) {
                 }
+                return false
+            }
+            if categoryLabel.text == "Select" {
+                let alert = UIAlertController(title: "Missing category", message: "Please select a category for the habit", preferredStyle: .Alert)
                 
+                let OKAction = UIAlertAction(title: "OK", style: .Default) { (action) in
+                }
+                
+                alert.addAction(OKAction)
+                
+                self.presentViewController(alert, animated: true) {
+                }
                 return false
             }
         }

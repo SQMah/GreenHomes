@@ -9,16 +9,19 @@
 import UIKit
 import CoreData
 
+// Core Data
 let managedContext = AppDelegate().managedObjectContext
 let fetchRequest = NSFetchRequest(entityName: "Habit")
-let fetchedResultsController = NSFetchedResultsController(fetchRequest: fetchRequest, managedObjectContext: managedContext, sectionNameKeyPath: nil, cacheName: nil)
+
 var habits = habitsData
+
 
 
 class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFetchedResultsControllerDelegate {
     @IBOutlet weak var numberLabel: UILabel!
     @IBOutlet weak var searchBar: UISearchBar!
     
+    var passedBackIndexPath: Int = 0
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -72,6 +75,8 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             return cell
     }
     
+    // Delete habits
+    
     override func tableView(tableView: UITableView, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath) {
         switch editingStyle {
         case .Delete:
@@ -93,11 +98,21 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
         updateCounts()
     }
     
-// Update counts of habits
+    // Update counts of habits
+    
     func updateCounts() {
         numberLabel.text = String(habits.count)
         
     }
+    
+    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
+        if segue.identifier == "editHabit" {
+            let selectedRowIndex = self.tableView.indexPathForSelectedRow
+            let editHabitTableViewController = segue.destinationViewController as? EditHabitTableViewController
+            editHabitTableViewController?.indexPath = selectedRowIndex!.row
+        }
+    }
+    
     
     @IBAction func settingstoHome(segue:UIStoryboardSegue) {
     }
@@ -127,4 +142,28 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             updateCounts()
         }
     }
+    @IBAction func editHabit(segue:UIStoryboardSegue) {
+        if let editHabitTableViewController = segue.sourceViewController as? EditHabitTableViewController {
+            let indexPath = editHabitTableViewController.indexPath
+            let entity =  NSEntityDescription.entityForName("Habit", inManagedObjectContext: managedContext)
+            let habitObject = NSManagedObject(entity: entity!, insertIntoManagedObjectContext: managedContext)
+            
+            let habit = editHabitTableViewController.habit
+            habitObject.setValue(habit!.name, forKey: "name")
+            habitObject.setValue(habit!.category, forKey: "category")
+            habitObject.setValue(habit!.time, forKey: "time")
+            managedContext.deleteObject(habits[indexPath] as NSManagedObject)
+            habits.removeAtIndex(indexPath)
+            
+            do {
+                try managedContext.save()
+                habits.append(habitObject)
+            } catch {
+                fatalError("Failure to save context: \(error)")
+            }
+            tableView.reloadData()
+            updateCounts()
+        }
+    }
 }
+
