@@ -20,6 +20,10 @@ var habits = habitsData
 class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFetchedResultsControllerDelegate {
     @IBOutlet weak var numberLabel: UILabel!
     @IBOutlet weak var searchBar: UISearchBar!
+    @IBOutlet weak var waterLabel: UILabel!
+    @IBOutlet weak var powerLabel: UILabel!
+    @IBOutlet weak var wasteLabel: UILabel!
+    @IBOutlet weak var miscLabel: UILabel!
     
     var passedBackIndexPath: Int = 0
     
@@ -102,7 +106,34 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
     
     func updateCounts() {
         numberLabel.text = String(habits.count)
+        let fetchRequest = NSFetchRequest(entityName: "Habit")
         
+        do {
+            let results = try managedContext.executeFetchRequest(fetchRequest)
+            habits = results as! [NSManagedObject]
+            var numOfWater: Int = 0
+            var numOfPower: Int = 0
+            var numOfWaste: Int = 0
+            var numOfMisc: Int = 0
+            for index in 0 ..< habits.count {
+                let habitAtIndex = habits[index]
+                if habitAtIndex.valueForKey("category") as? String == "Water" {
+                    numOfWater += 1
+                } else if habitAtIndex.valueForKey("category") as? String == "Power" {
+                    numOfPower += 1
+                } else if habitAtIndex.valueForKey("category") as? String == "Waste" {
+                    numOfWaste += 1
+                } else if habitAtIndex.valueForKey("category") as? String == "Misc." {
+                    numOfMisc += 1
+                }
+            }
+            waterLabel.text = "\(numOfWater) water"
+            powerLabel.text = "\(numOfPower) power"
+            wasteLabel.text = "\(numOfWaste) waste"
+            miscLabel.text = "\(numOfMisc) misc"
+        } catch let error as NSError {
+            print("Could not fetch \(error), \(error.userInfo)")
+        }
     }
     
     override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
@@ -142,6 +173,8 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             updateCounts()
         }
     }
+    
+    // This is only slightly different from the addHabit function: it deletes the initial version of the habit and appends the edited version by deleting the habits object at the indexPath that the user clicked to edit the habit
     @IBAction func editHabit(segue:UIStoryboardSegue) {
         if let editHabitTableViewController = segue.sourceViewController as? EditHabitTableViewController {
             let indexPath = editHabitTableViewController.indexPath
