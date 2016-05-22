@@ -25,6 +25,7 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
     @IBOutlet weak var wasteLabel: UILabel!
     @IBOutlet weak var miscLabel: UILabel!
     
+    var timer: dispatch_source_t!
     var passedBackIndexPath: Int = 0
     
     override func viewDidLoad() {
@@ -37,6 +38,7 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
         //Set text color to white
         searchTextField.attributedPlaceholder = NSAttributedString(string: NSLocalizedString("Search", comment: ""), attributes: [NSForegroundColorAttributeName: UIColor.whiteColor()])
         searchTextField.textColor = UIColor.whiteColor()
+        
         updateCounts()
     }
 
@@ -57,6 +59,34 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             print("Could not fetch \(error), \(error.userInfo)")
         }
         updateCounts()
+    }
+    
+    override func viewDidAppear(animated: Bool) {
+        super.viewDidAppear(animated)
+        let isFirstLaunch = NSUserDefaults.isFirstLaunch()
+        if isFirstLaunch == false {
+            guard let settings = UIApplication.sharedApplication().currentUserNotificationSettings() else { return }
+        
+            if settings.types == .None {
+                let alertController = UIAlertController(
+                    title: "Notifications is turned off for the app",
+                    message: "In order for us to send you reminders for your habits, you should consider allowing our app to send notifications",
+                    preferredStyle: .Alert)
+            
+                let cancelAction = UIAlertAction(title: "Cancel", style: .Cancel, handler: nil)
+                alertController.addAction(cancelAction)
+            
+                let openAction = UIAlertAction(title: "Settings", style: .Default) { (action) in
+                    if let url = (NSURL(string: "prefs:root=NOTIFICATIONS_ID")) {
+                        UIApplication.sharedApplication().openURL(url)
+                    }
+                }
+                alertController.addAction(openAction)
+                self.presentViewController(alertController, animated: true, completion: nil)
+            } else {
+                
+            }
+        }
     }
 
     // MARK: - Table view data source
@@ -84,6 +114,36 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
     override func tableView(tableView: UITableView, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath) {
         switch editingStyle {
         case .Delete:
+            
+            // Removes notification for the habit that is to be deleted
+            
+            let fetchRequest = NSFetchRequest(entityName: "Habit")
+            
+            do {
+                let results = try managedContext.executeFetchRequest(fetchRequest)
+                habits = results as! [NSManagedObject]
+                let habitAtIndex = habits[indexPath.row]
+                let habitName = habitAtIndex.valueForKey("name") as? String
+                let habitCategory = habitAtIndex.valueForKey("category") as? String
+                let habitTime = habitAtIndex.valueForKey("time") as? String
+                let keyValuetoDelete = "Optional(\(habitName),\(habitCategory),\(habitTime))"
+                
+                let notifArray: NSArray = UIApplication.sharedApplication().scheduledLocalNotifications!
+                for i in 0 ..< notifArray.count {
+                    let notification: UILocalNotification = notifArray[i] as! UILocalNotification
+                    
+                    let userInfoDictionary: [NSObject : AnyObject] = notification.userInfo!
+                    let uniqueKeyValue: String = "\(userInfoDictionary["ID"])"
+                    if uniqueKeyValue == keyValuetoDelete {
+                        UIApplication.sharedApplication().cancelLocalNotification(notification)
+                    }
+                }
+                
+            } catch let error as NSError {
+                print("Could not fetch \(error), \(error.userInfo)")
+            }
+            
+            
             // remove the deleted item from the model
             managedContext.deleteObject(habits[indexPath.row] as NSManagedObject)
             habits.removeAtIndex(indexPath.row)
@@ -115,6 +175,9 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             var numOfPower: Int = 0
             var numOfWaste: Int = 0
             var numOfMisc: Int = 0
+            
+            // Tests for different category strings for all the objects in habits database
+            
             for index in 0 ..< habits.count {
                 let habitAtIndex = habits[index]
                 if habitAtIndex.valueForKey("category") as? String == "Water" {
@@ -171,6 +234,27 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             }
             tableView.reloadData()
             updateCounts()
+            
+            // create a corresponding local notification
+            let notification:UILocalNotification = UILocalNotification()
+            notification.alertTitle = "Habit reminder" // text for the notification title
+            notification.alertBody = "It's time for habit '\(habit!.name!)'!" // text that will be displayed in the notification
+            notification.alertAction = "open" // text that is displayed after "slide to..." on the lock screen - defaults to "slide to view"
+            
+            // converts saved habit time string to NSDate
+            
+            let timeAsString = habit!.time
+            let timeFormatter = NSDateFormatter()
+            timeFormatter.dateFormat = "h:mm a"
+            let time = timeFormatter.dateFromString(timeAsString!)
+            
+            notification.fireDate = time // habit due date (when notification will be fired)
+            notification.repeatInterval = NSCalendarUnit.Day // repeats every day
+            notification.timeZone = NSCalendar.currentCalendar().timeZone // set to time zone user is in
+            notification.soundName = UILocalNotificationDefaultSoundName // play default sound
+            notification.category = "TODO_CATEGORY" // I have no idea but I'm going to keep it there
+            notification.userInfo = ["ID": "\(habit!.name),\(habit!.category),\(habit!.time)"]
+            UIApplication.sharedApplication().scheduleLocalNotification(notification) // schedules notification
         }
     }
     
@@ -185,10 +269,31 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             habitObject.setValue(habit!.name, forKey: "name")
             habitObject.setValue(habit!.category, forKey: "category")
             habitObject.setValue(habit!.time, forKey: "time")
-            managedContext.deleteObject(habits[indexPath] as NSManagedObject)
-            habits.removeAtIndex(indexPath)
+            
+            // deletes old object and notification
             
             do {
+                // get old habit data
+                let habitAtIndex = habits[indexPath]
+                let habitName = habitAtIndex.valueForKey("name") as? String
+                let habitCategory = habitAtIndex.valueForKey("category") as? String
+                let habitTime = habitAtIndex.valueForKey("time") as? String
+                let keyValuetoDelete = "Optional(\(habitName),\(habitCategory),\(habitTime))"
+                let notifArray: NSArray = UIApplication.sharedApplication().scheduledLocalNotifications!
+                for i in 0 ..< notifArray.count {
+                    let notification: UILocalNotification = notifArray[i] as! UILocalNotification
+                    
+                    // compares old habit data with notification list ID and deletes the one with the old ID
+                    let userInfoDictionary: [NSObject : AnyObject] = notification.userInfo!
+                    let uniqueKeyValue: String = "\(userInfoDictionary["ID"])"
+                    if uniqueKeyValue == keyValuetoDelete {
+                         UIApplication.sharedApplication().cancelLocalNotification(notification)
+                    }
+                }
+                
+                managedContext.deleteObject(habits[indexPath] as NSManagedObject)
+                habits.removeAtIndex(indexPath)
+                
                 try managedContext.save()
                 habits.append(habitObject)
             } catch {
@@ -196,7 +301,41 @@ class HomeTableViewController: UITableViewController, UITextFieldDelegate, NSFet
             }
             tableView.reloadData()
             updateCounts()
+            
+            // create a corresponding local notification
+            let notification:UILocalNotification = UILocalNotification()
+            notification.alertTitle = "Habit reminder" // text for the notification title
+            notification.alertBody = "It's time for habit '\(habit!.name!)'!" // text that will be displayed in the notification
+            notification.alertAction = "open" // text that is displayed after "slide to..." on the lock screen - defaults to "slide to view"
+            
+            // converts saved habit time string to NSDate
+            
+            let timeAsString = habit!.time
+            let timeFormatter = NSDateFormatter()
+            timeFormatter.dateFormat = "h:mm a"
+            let time = timeFormatter.dateFromString(timeAsString!)
+            
+            notification.fireDate = time // habit due date (when notification will be fired)
+            notification.repeatInterval = NSCalendarUnit.Day // repeats every day
+            notification.timeZone = NSCalendar.currentCalendar().timeZone // set to time zone user is in
+            notification.soundName = UILocalNotificationDefaultSoundName // play default sound
+            notification.category = "TODO_CATEGORY" // I have no idea but I'm going to keep it there
+            notification.userInfo = ["ID": "\(habit!.name),\(habit!.category),\(habit!.time)"]
+            UIApplication.sharedApplication().scheduleLocalNotification(notification) // schedules notification
         }
+    }
+}
+
+extension NSUserDefaults {
+    // check for is first launch - only true on first invocation after app install, false on all further invocations
+    static func isFirstLaunch() -> Bool {
+        let firstLaunchFlag = "FirstLaunchFlag"
+        let isFirstLaunch = NSUserDefaults.standardUserDefaults().stringForKey(firstLaunchFlag) == nil
+        if (isFirstLaunch) {
+            NSUserDefaults.standardUserDefaults().setObject("false", forKey: firstLaunchFlag)
+            NSUserDefaults.standardUserDefaults().synchronize()
+        }
+        return isFirstLaunch
     }
 }
 
